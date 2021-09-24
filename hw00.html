@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>作品集</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="main.css">
+</head>
+<body>
+	<script type="module">
+		import * as THREE from './js/three.module.js';
+		import { TTFLoader } from './js/TTFLoader.js';
+
+		// svg
+		import { SVGLoader } from './js/SVGLoader.js';
+
+		let groupSVG;
+		// svg
+
+		let container;
+		let camera, cameraTarget, scene, renderer;
+		let group, textMesh1, textMesh2, textGeo, material;
+		let firstLetter = true;
+
+		let text = '何俊泓 作品集';
+		const height = 20,
+			size = 70,
+			hover = 30,
+			curveSegments = 4,
+			bevelThickness = 2,
+			bevelSize = 1.5;
+
+		let font = null;
+		const mirror = true;
+
+		let targetRotation = 0;
+		let targetRotationOnPointerDown = 0;
+
+		let pointerX = 0;
+		let pointerXOnPointerDown = 0;
+
+		let windowHalfX = window.innerWidth / 2;
+
+		init();
+		animate();
+
+		function init() {
+
+			container = document.createElement( 'div' );
+			document.body.appendChild( container );
+
+			// CAMERA
+			camera = new THREE.PerspectiveCamera( 30, window.innerWidth / window.innerHeight, 1, 1500 );
+			camera.position.set( 0, 400, 700 );
+			cameraTarget = new THREE.Vector3( 0, 196, 0 );
+
+			// SCENE
+			scene = new THREE.Scene();
+			scene.background = new THREE.Color( 0x9F353A);
+			scene.fog = new THREE.Fog( 0xffffff, 250, 1400 );
+
+			// LIGHTS
+			const dirLight = new THREE.DirectionalLight( 0xffffff, 0.125 );
+			dirLight.position.set( 0, 0, 1 ).normalize();
+			scene.add( dirLight );
+
+			const pointLight = new THREE.PointLight( 0xffffff, 1.5 );
+			pointLight.position.set( 0, 100, 90 );
+			pointLight.color.setHSL( Math.random(), 1, 0.5 );
+			scene.add( pointLight );
+
+			material = new THREE.MeshPhongMaterial( { color: 0xffffff, flatShading: true } );
+
+			group = new THREE.Group();
+			group.position.y = 100;
+
+			scene.add( group );
+
+			const loader = new TTFLoader();
+
+			loader.load( 'fonts/MoeLI.ttf', function ( json ) {
+				font = new THREE.Font( json );
+				createText();
+			} );
+
+			const plane = new THREE.Mesh(
+				new THREE.PlaneGeometry( 10000, 10000 ),
+				new THREE.MeshBasicMaterial( { color: 0xffffff, opacity: 0.5, transparent: true } )
+			);
+			plane.position.y = 100;
+			plane.rotation.x = - Math.PI / 2;
+			scene.add( plane );
+
+			// RENDERER
+			renderer = new THREE.WebGLRenderer( { antialias: true } );
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			container.appendChild( renderer.domElement );
+
+			// EVENTS
+			container.style.touchAction = 'none';
+			container.addEventListener( 'pointerdown', onPointerDown );
+			document.addEventListener( 'keypress', onDocumentKeyPress );
+			document.addEventListener( 'keydown', onDocumentKeyDown );
+			window.addEventListener( 'resize', onWindowResize );
+
+			// svg
+			loadSVG( 'me.svg' );
+			// svg
+		}
+
+		// svg
+		function loadSVG( url ) {
+			//
+			const loader = new SVGLoader();
+
+			loader.load( url, function ( data ) {
+				const paths = data.paths;
+				//const groupSVG = new THREE.Group();
+				groupSVG = new THREE.Group();
+				groupSVG.scale.multiplyScalar( 0.25 );
+				groupSVG.position.x = 0;
+				groupSVG.position.y = 390;
+				groupSVG.scale.y *= - 1;
+
+				for ( let i = 0; i < paths.length; i ++ ) {
+					const path = paths[ i ];
+					const fillColor = path.userData.style.fill;
+
+					if ( fillColor !== undefined && fillColor !== 'none' ) {
+
+						const material = new THREE.MeshBasicMaterial( {
+							color: new THREE.Color().setStyle( fillColor ),
+							opacity: path.userData.style.fillOpacity,
+							transparent: path.userData.style.fillOpacity < 1,
+							side: THREE.DoubleSide,
+							depthWrite: false,
+							wireframe: false
+						} );
+
+						const shapes = SVGLoader.createShapes( path );
+
+						for ( let j = 0; j < shapes.length; j ++ ) {
+							const shape = shapes[ j ];
+							const geometry = new THREE.ShapeGeometry( shape );
+							const mesh = new THREE.Mesh( geometry, material );
+
+							groupSVG.add( mesh );
+						}
+					}
+
+					const strokeColor = path.userData.style.stroke;
+
+					if ( strokeColor !== undefined && strokeColor !== 'none' ) {
+
+						const material = new THREE.MeshBasicMaterial( {
+							color: new THREE.Color().setStyle( strokeColor ),
+							opacity: path.userData.style.strokeOpacity,
+							transparent: path.userData.style.strokeOpacity < 1,
+							side: THREE.DoubleSide,
+							depthWrite: false,
+							wireframe: true
+						} );
+
+						for ( let j = 0, jl = path.subPaths.length; j < jl; j ++ ) {
+							const subPath = path.subPaths[ j ];
+							const geometry = SVGLoader.pointsToStroke( subPath.getPoints(), path.userData.style );
+
+							if ( geometry ) {
+								const mesh = new THREE.Mesh( geometry, material );
+								groupSVG.add( mesh );
+							}
+						}
+					}
+				}
+
+				scene.add( groupSVG );
+			} );
+		}
+
+
+
+
+		function onWindowResize() {
+			windowHalfX = window.innerWidth / 2;
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+			renderer.setSize( window.innerWidth, window.innerHeight );
+		}
+
+		function onDocumentKeyDown( event ) {
+			if ( firstLetter ) {
+				firstLetter = false;
+				text = '';
+			}
+
+			const keyCode = event.keyCode;
+
+			// backspace
+
+			if ( keyCode === 8 ) {
+				event.preventDefault();
+				text = text.substring( 0, text.length - 1 );
+				refreshText();
+				return false;
+			}
+		}
+
+		function onDocumentKeyPress( event ) {
+			const keyCode = event.which;
+
+			// backspace
+			if ( keyCode === 8 ) {
+				event.preventDefault();
+			} else {
+				const ch = String.fromCharCode( keyCode );
+				text += ch;
+				refreshText();
+			}
+		}
+
+		function createText() {
+			textGeo = new THREE.TextGeometry( text, {
+
+				font: font,
+				size: size,
+				height: height,
+				curveSegments: curveSegments,
+
+				bevelThickness: bevelThickness,
+				bevelSize: bevelSize,
+				bevelEnabled: true
+			} );
+
+			textGeo.computeBoundingBox();
+			textGeo.computeVertexNormals();
+
+			const centerOffset = - 0.5 * ( textGeo.boundingBox.max.x - textGeo.boundingBox.min.x );
+
+			textMesh1 = new THREE.Mesh( textGeo, material );
+
+			textMesh1.position.x = centerOffset;
+			textMesh1.position.y = hover;
+			textMesh1.position.z = 0;
+
+			textMesh1.rotation.x = 0;
+			textMesh1.rotation.y = Math.PI * 2;
+
+			group.add( textMesh1 );
+
+			//textMesh1.rotation.x = 90;
+			//textMesh1.rotation.y = Math.PI * 2;
+
+			//group.add( textMesh1 );
+
+			if ( mirror ) {
+				textMesh2 = new THREE.Mesh( textGeo, material );
+
+				textMesh2.position.x = centerOffset;
+				textMesh2.position.y = - hover;
+				textMesh2.position.z = height;
+
+				textMesh2.rotation.x = Math.PI;
+				textMesh2.rotation.y = Math.PI * 2;
+
+				group.add( textMesh2 );
+			}
+
+		}
+
+		function refreshText() {
+			group.remove( textMesh1 );
+			if ( mirror ) group.remove( textMesh2 );
+
+			if ( ! text ) return;
+
+			createText();
+		}
+
+		function onPointerDown( event ) {
+			if ( event.isPrimary === false ) return;
+
+			pointerXOnPointerDown = event.clientX - windowHalfX;
+			targetRotationOnPointerDown = targetRotation;
+
+			document.addEventListener( 'pointermove', onPointerMove );
+			document.addEventListener( 'pointerup', onPointerUp );
+		}
+
+		function onPointerMove( event ) {
+			if ( event.isPrimary === false ) return;
+
+			pointerX = event.clientX - windowHalfX;
+
+			targetRotation = targetRotationOnPointerDown + ( pointerX - pointerXOnPointerDown ) * 0.02;
+		}
+
+		function onPointerUp() {
+			if ( event.isPrimary === false ) return;
+
+			document.removeEventListener( 'pointermove', onPointerMove );
+			document.removeEventListener( 'pointerup', onPointerUp );
+		}
+
+		//
+
+		function animate() {
+			requestAnimationFrame( animate );
+			group.rotation.y += ( targetRotation - group.rotation.y ) * 0.05;
+
+			groupSVG.rotation.y += ( targetRotation - group.rotation.y ) * 0.05;
+
+			camera.lookAt( cameraTarget );
+			renderer.render( scene, camera );
+		}
+	</script>
+
+</body>
+</html>
